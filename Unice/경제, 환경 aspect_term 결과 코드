@@ -1,0 +1,57 @@
+import pandas as pd
+from transformers import pipeline
+from konlpy.tag import Okt
+
+# 1. 데이터 로드
+df = pd.read_csv("경북산불_filtered1.csv", encoding="utf-8-sig")
+df['content'] = df['content'].fillna('').astype(str)
+
+# 2. 사용자 사전
+custom_lexicon = aspect_terms  #aspect_terms = 경제, 환경 키워드
+
+# 3. 형태소 분석기 초기화
+okt = Okt()
+
+# 4. 모델 설정
+model_identifier = "nlptown/bert-base-multilingual-uncased-sentiment"
+
+# 5. 파이프라인 초기화
+sentiment_analyzer = pipeline(
+    "text-classification",
+    model=model_identifier,
+    tokenizer=model_identifier  # 토크나이저도 동일 모델 지정
+)
+
+# 6. 감성 분류 함수
+def hybrid_sentiment_analysis(text):
+    # 1단계: 사용자 사전 단어 탐지
+    tokens = okt.morphs(text)
+    detected_terms = [word for word in tokens if word in custom_lexicon]
+
+    if not detected_terms:
+        return '중립'
+
+    # 2단계: 감성 분석 수행
+    try:
+        result = sentiment_analyzer(text[:512])[0]
+        label = result['label']
+
+        # 레이블 변환 로직 (수정된 부분)
+        label_num = int(label.split()[0])  # '1 star' → 1
+        if label_num >= 4:
+            return '긍정'
+        elif label_num <= 2:
+            return '부정'
+        else:
+            return '중립'
+
+    except Exception as e:
+        print(f"분석 실패: {str(e)[:50]}...")  # 에러 메시지 축약 출력
+        return '중립'
+
+# 7. 감성 분석 실행
+df['sentiment'] = df['content'].apply(hybrid_sentiment_analysis)
+
+# 8. 결과 저장 및 확인
+df.to_csv("ABSA 결과.csv", index=False, encoding="utf-8-sig")
+print(df['sentiment'].value_counts())
